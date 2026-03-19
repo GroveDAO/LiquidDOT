@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build artifacts
+dist/
+build/
+artifacts/
+cache/
+typechain-types/
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Deployment artifacts (exclude from CI but keep in repo for reference)
+# deployments/*.json  # Keep deployment artifacts
+
+# Coverage
+coverage/
+coverage.json
+
+# Hardhat
+.hardhat/
+
+# OS
+.DS_Store
+*.log
