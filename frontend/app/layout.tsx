@@ -1,17 +1,24 @@
 import React from "react";
-import { Inter } from "next/font/google";
 import type { Metadata } from "next";
 import Providers from "./providers";
 import Link from "next/link";
 import ConnectWallet from "../components/ConnectWallet";
 import "@rainbow-me/rainbowkit/styles.css";
+import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const metadataBase = new URL(
+  process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+);
 
 export const metadata: Metadata = {
   title: "LiquidDOT — Native Liquid Staking on Polkadot",
   description:
     "The first liquid staking protocol on Polkadot Hub. Deposit DOT, receive stDOT, and earn auto-compounding NPoS staking rewards.",
+  metadataBase,
+  icons: {
+    icon: "/icon.svg",
+  },
   openGraph: {
     images: ["/og-image.png"],
   },
@@ -20,7 +27,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gray-950 text-white min-h-screen`}>
+      <body className="bg-gray-950 text-white min-h-screen">
         <Providers>
           {/* Header */}
           <header className="border-b border-gray-800 px-6 py-4">
