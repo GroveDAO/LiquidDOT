@@ -10,11 +10,13 @@ cache/
 typechain-types/
 frontend/.next/
 frontend/out/
+frontend/tsconfig.tsbuildinfo
 
 # Environment
 .env
 .env.local
 .env.*.local
+.vercel/
 
 # Deployment artifacts (exclude from CI but keep in repo for reference)
 # deployments/*.json  # Keep deployment artifacts

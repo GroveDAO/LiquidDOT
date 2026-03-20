@@ -8,6 +8,39 @@
 
 **LiquidDOT** is the first liquid staking protocol on Polkadot Hub. It wraps Polkadot's native NPoS staking — accessed via the Hub's EVM staking precompile at `0x0000000000000000000000000000000000000800` — inside a Solidity ERC-4626 vault. Users deposit DOT and receive `stDOT`, a yield-bearing ERC-20 token that auto-compounds staking rewards. `stDOT` is fully composable with any DeFi protocol deployed on Polkadot Hub's EVM environment, uniquely combining the security of Polkadot's NPoS with the expressiveness of EVM-native DeFi.
 
+## Project Vision
+
+LiquidDOT is building toward a native staking base layer for Polkadot Hub EVM.
+
+- **Turn native staking into a liquid primitive** so PAS/DOT can remain productive while staying usable across DeFi.
+- **Unify yield and governance** so the same product surface that handles deposits and redemptions also controls validator selection and protocol operations.
+- **Create a canonical Hub-native collateral asset** that can plug into lending markets, AMMs, treasury products, and eventually XCM routes across the wider Polkadot ecosystem.
+
+The current deployment is intentionally production-minded: it uses the real native asset on Polkadot Hub Testnet, live vault accounting, on-chain governance, and operator-assisted staking while contract-native staking support on this testnet continues to mature.
+
+## Live Deployment
+
+- **Network:** Polkadot Hub Testnet (`PAS`)
+- **Chain ID:** `420420417`
+- **RPC:** `https://services.polkadothub-rpc.com/testnet`
+- **Deployed at:** `2026-03-20T02:01:42.464Z`
+- **Deployer:** `0x9f2EdCE3a34e42eaf8f965d4E14aDDd12Cf865f4`
+
+## Deployed Contracts (Polkadot Hub Testnet)
+
+| Contract | Address | Explorer |
+|---|---|---|
+| DOT sentinel | `0x0000000000000000000000000000000000000000` | Native asset sentinel |
+| StakingPrecompile | `0x0000000000000000000000000000000000000800` | Native precompile |
+| LiquidDOTVault | `0x0004DF4A37C6541453e8C01182d0611eFaa76ffb` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0x0004DF4A37C6541453e8C01182d0611eFaa76ffb) |
+| StDOTToken | `0xc79E3E0c71a0E7ED4209B3e8e5753665AE19d606` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0xc79E3E0c71a0E7ED4209B3e8e5753665AE19d606) |
+| GovToken | `0x7bEd5956dD1cC8A15CC623230763775f95857981` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0x7bEd5956dD1cC8A15CC623230763775f95857981) |
+| ValidatorRegistry | `0x69bc6e363B01d06a9939C0F8c1653D702118058b` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0x69bc6e363B01d06a9939C0F8c1653D702118058b) |
+| ValidatorGovernor | `0xC8f7532c0bA448aB4D6C27CC56d7ddfaB9BF1599` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0xC8f7532c0bA448aB4D6C27CC56d7ddfaB9BF1599) |
+| TimelockController | `0xD1d1ee0eC8B1460fc235C830179b9221549cB155` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0xD1d1ee0eC8B1460fc235C830179b9221549cB155) |
+| AutoCompounder | `0xD02Ab915f06437fB22d889F5a50fac00577C6C7B` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0xD02Ab915f06437fB22d889F5a50fac00577C6C7B) |
+| LiquidDOTLens | `0x0C287c8B5E343bE6A869C8AdCeF33B00E0Be24f2` | [Blockscout](https://blockscout-testnet.polkadot.io/address/0x0C287c8B5E343bE6A869C8AdCeF33B00E0Be24f2) |
+
 ## Hackathon Track
 
 - **Track 2: PVM Smart Contracts** — Accessing Polkadot native functionality via precompiles. LiquidDOT calls `bond`, `bondExtra`, `unbond`, `nominate`, and `getPendingRewards` directly on the on-chain staking precompile — no bridge, no custodian.
@@ -81,17 +114,6 @@
 | `LiquidDOTLens` | Read-only view aggregator | `ILiquidDOT` |
 | `StakingPrecompile` | Wrapper around 0x...0800 precompile | `IStakingPrecompile` |
 
-## Deployed Contracts (Polkadot Hub Testnet)
-
-| Contract | Address | Explorer |
-|---|---|---|
-| LiquidDOTVault | TBD | [Blockscout](https://blockscout.pah.zeitgeist.pm) |
-| GovToken | TBD | TBD |
-| ValidatorRegistry | TBD | TBD |
-| ValidatorGovernor | TBD | TBD |
-| AutoCompounder | TBD | TBD |
-| LiquidDOTLens | TBD | TBD |
-
 ## Local Development
 
 ```bash
@@ -128,7 +150,8 @@ npm run verify:testnet
 ```bash
 # Set environment variables
 export NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
-export NEXT_PUBLIC_CHAIN_ID=420420421
+export NEXT_PUBLIC_CHAIN_ID=420420417
+export NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 # Start dev server
 npm run frontend:dev
@@ -150,9 +173,10 @@ npx hardhat compound --network polkadot_hub_testnet
 
 ## Roadmap
 
-- **Phase 1 (Hackathon):** Single-collateral stDOT, manual keeper trigger, on-chain governance for validator selection.
-- **Phase 2:** Automated keeper network, stDOT as collateral in Hub DeFi money markets.
-- **Phase 3:** XCM-native cross-parachain stDOT liquidity, multi-asset vault.
+- **Phase 1: Live Testnet Launch** — Ship the PAS-native vault, seeded live stats, operator-assisted staking workflow, queue/claim withdrawals, and validator governance UI on Polkadot Hub Testnet.
+- **Phase 2: Native Staking Upgrade** — Move from operator-assisted staking into fully contract-native staking as Polkadot Hub testnet/mainnet staking precompile support becomes available for contracts.
+- **Phase 3: DeFi Integrations** — Position `stDOT` as Hub-native collateral across lending markets, AMMs, LP strategies, and DAO treasury products.
+- **Phase 4: Cross-Chain Expansion** — Extend `stDOT` liquidity through XCM-connected Polkadot apps and evolve the vault toward multi-asset staking products and richer reward routing.
 
 ## On-Chain Identity
 
