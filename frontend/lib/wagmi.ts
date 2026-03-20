@@ -7,33 +7,17 @@ import type { Chain } from "viem";
 // ---------------------------------------------------------------------------
 
 export const polkadotHubTestnet: Chain = {
-  id: 420420421,
+  id: 420420417,
   name: "Polkadot Hub Testnet",
-  nativeCurrency: { name: "DOT", symbol: "DOT", decimals: 10 },
+  nativeCurrency: { name: "Paseo", symbol: "PAS", decimals: 10 },
   rpcUrls: {
-    default: { http: ["https://rpc.pah.zeitgeist.pm"] },
-    public: { http: ["https://rpc.pah.zeitgeist.pm"] },
+    default: { http: ["https://services.polkadothub-rpc.com/testnet"] },
+    public: { http: ["https://services.polkadothub-rpc.com/testnet"] },
   },
   blockExplorers: {
     default: {
       name: "Blockscout",
-      url: "https://blockscout.pah.zeitgeist.pm",
-    },
-  },
-};
-
-export const polkadotHub: Chain = {
-  id: 420420420,
-  name: "Polkadot Hub",
-  nativeCurrency: { name: "DOT", symbol: "DOT", decimals: 10 },
-  rpcUrls: {
-    default: { http: ["https://rpc.polkadot.io"] },
-    public: { http: ["https://rpc.polkadot.io"] },
-  },
-  blockExplorers: {
-    default: {
-      name: "Blockscout",
-      url: "https://blockscout.polkadot.network",
+      url: "https://blockscout-testnet.polkadot.io",
     },
   },
 };
@@ -50,14 +34,13 @@ if (!projectId) {
 }
 
 export const wagmiConfig = createConfig({
-  chains: [polkadotHubTestnet, polkadotHub],
+  chains: [polkadotHubTestnet],
   connectors: [
     injected(),
-    walletConnect({ projectId: projectId ?? "" }),
     coinbaseWallet({ appName: "LiquidDOT" }),
+    ...(projectId ? [walletConnect({ projectId })] : []),
   ],
   transports: {
     [polkadotHubTestnet.id]: http(),
-    [polkadotHub.id]: http(),
   },
 });

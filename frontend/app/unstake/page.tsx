@@ -3,23 +3,43 @@
 import React from "react";
 import UnstakeCard from "../../components/UnstakeCard";
 import { useVault } from "../../hooks/useVault";
-import { DEPLOYED_ADDRESSES } from "../../lib/contracts";
-import { formatDOT } from "../../lib/utils";
+import { formatDOT, getNativeTokenSymbol } from "../../lib/utils";
 import { useChainId, useAccount } from "wagmi";
+import { getDeploymentAddresses, resolveDeploymentChainId } from "../../lib/network";
+import { useHydrated } from "../../hooks/useHydrated";
 
 export default function UnstakePage() {
-  const chainId = useChainId();
-  const addresses = DEPLOYED_ADDRESSES[chainId];
+  const walletChainId = useChainId();
+  const chainId = resolveDeploymentChainId(walletChainId);
+  const nativeSymbol = getNativeTokenSymbol(chainId);
+  const addresses = getDeploymentAddresses(walletChainId);
   const vaultAddress = addresses?.vault as `0x${string}`;
-  const { address: userAddress } = useAccount();
-  const { claimWithdrawal, isLoading } = useVault(vaultAddress);
+  const { isConnected, status } = useAccount();
+  const hydrated = useHydrated();
+  const {
+    activeEra,
+    claimWithdrawal,
+    nativeStakingEnabled,
+    operatorStakingEnabled,
+    stakingModeResolved,
+    pendingWithdrawals,
+    vaultStats,
+    isLoading,
+  } = useVault(vaultAddress);
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-extrabold text-white mb-2">Unstake</h1>
         <p className="text-gray-400">
-          Burn stDOT to queue an unbonding withdrawal. After 28 eras (~28 days), claim your DOT.
+          Burn stDOT to queue a withdrawal and claim your {nativeSymbol}
+          {stakingModeResolved && nativeStakingEnabled
+            ? " after the unbonding period completes."
+            : stakingModeResolved && operatorStakingEnabled
+            ? " after the LiquidDOT operator has returned unbonded native liquidity."
+            : stakingModeResolved
+            ? " as soon as the request is created in native vault mode."
+            : " once the withdrawal request has been processed."}
         </p>
       </div>
 
@@ -43,11 +63,64 @@ export default function UnstakePage() {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-sm">
-                  Connect wallet to view pending withdrawals
-                </td>
-              </tr>
+              {!hydrated || status === "connecting" || status === "reconnecting" ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-sm">
+                    Loading wallet state...
+                  </td>
+                </tr>
+              ) : !isConnected ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-sm">
+                    Connect wallet to view pending withdrawals
+                  </td>
+                </tr>
+              ) : pendingWithdrawals.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-sm">
+                    No pending withdrawals yet
+                  </td>
+                </tr>
+              ) : (
+                pendingWithdrawals.map((request) => {
+                  const readyToClaim =
+                    operatorStakingEnabled
+                      ? request.funded
+                      : !nativeStakingEnabled ||
+                    (activeEra !== undefined &&
+                      activeEra >= request.unbondEra + (vaultStats?.unbondingPeriodEras ?? 0n));
+
+                  return (
+                    <tr key={request.requestId.toString()} className="border-t border-gray-700">
+                      <td className="px-6 py-4 text-sm text-white">#{request.requestId.toString()}</td>
+                      <td className="px-6 py-4 text-sm text-white">
+                        {formatDOT(request.dotAmount)} {nativeSymbol}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-300">
+                        Era {request.unbondEra.toString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <span className={readyToClaim ? "text-emerald-400" : "text-amber-400"}>
+                          {readyToClaim
+                            ? "Ready to claim"
+                            : operatorStakingEnabled
+                            ? "Awaiting operator liquidity"
+                            : "Unbonding"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <button
+                          onClick={() => void claimWithdrawal(request.requestId)}
+                          disabled={!readyToClaim || isLoading}
+                          className="rounded-lg bg-pink-500 px-3 py-2 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {readyToClaim ? "Claim" : "Pending"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

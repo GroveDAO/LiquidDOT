@@ -37,6 +37,9 @@ contract ValidatorRegistry is AccessControl {
     /// @notice The staking precompile used to read the current era
     IStakingPrecompile public immutable stakingPrecompile;
 
+    /// @notice Whether nominee proposals should wait on staking-era progression.
+    bool public immutable nativeStakingEnabled;
+
     /// @notice Currently active nominee addresses
     address[] private _currentNominees;
 
@@ -69,12 +72,14 @@ contract ValidatorRegistry is AccessControl {
     /// @param _vault Address of the LiquidDOT vault
     /// @param _stakingPrecompile Address of the staking precompile (or mock)
     /// @param admin Address to receive REGISTRY_ADMIN_ROLE and DEFAULT_ADMIN_ROLE
-    constructor(address _vault, address _stakingPrecompile, address admin) {
+    /// @param _nativeStakingEnabled Whether the underlying network exposes staking-era reads
+    constructor(address _vault, address _stakingPrecompile, address admin, bool _nativeStakingEnabled) {
         require(_vault != address(0), "ValidatorRegistry: zero vault");
         require(_stakingPrecompile != address(0), "ValidatorRegistry: zero precompile");
 
         vault = ILiquidDOT(_vault);
         stakingPrecompile = IStakingPrecompile(_stakingPrecompile);
+        nativeStakingEnabled = _nativeStakingEnabled;
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGISTRY_ADMIN_ROLE, admin);
@@ -97,8 +102,9 @@ contract ValidatorRegistry is AccessControl {
             require(nominees[i] != address(0), "ValidatorRegistry: zero address nominee");
         }
 
-        uint32 currentEra = stakingPrecompile.getActiveEra();
-        executeAfterEra = currentEra + NOMINEE_DELAY_ERAS;
+        executeAfterEra = nativeStakingEnabled
+            ? stakingPrecompile.getActiveEra() + NOMINEE_DELAY_ERAS
+            : 0;
 
         delete _queuedNominees;
         for (uint256 i = 0; i < nominees.length; i++) {
@@ -112,8 +118,10 @@ contract ValidatorRegistry is AccessControl {
     /// @dev Anyone can call this once the delay has passed
     function executeNominees() external {
         require(_queuedNominees.length > 0, "ValidatorRegistry: no queued nominees");
-        uint32 currentEra = stakingPrecompile.getActiveEra();
-        require(currentEra >= executeAfterEra, "ValidatorRegistry: delay not elapsed");
+        if (nativeStakingEnabled) {
+            uint32 currentEra = stakingPrecompile.getActiveEra();
+            require(currentEra >= executeAfterEra, "ValidatorRegistry: delay not elapsed");
+        }
 
         // Snapshot the queued nominees, clear the queue
         address[] memory nominees = _queuedNominees;

@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { deployTestFixture, ONE_DOT } from "../helpers/setup";
+import { deployNativeVaultModeFixture, deployTestFixture, ONE_DOT } from "../helpers/setup";
 
 describe("AutoCompounder", () => {
   const THOUSAND_DOT = ethers.parseUnits("1000", 10);
@@ -19,7 +19,7 @@ describe("AutoCompounder", () => {
       const { autoCompounder, mockStaking, vault, alice } = await loadFixture(deployTestFixture);
 
       // Deposit so there's managed DOT
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       // Inject rewards above 1 DOT threshold (1e10)
       const bigReward = ethers.parseUnits("10", 10); // 10 DOT
       await mockStaking.addMockRewards(await vault.getAddress(), bigReward);
@@ -30,7 +30,7 @@ describe("AutoCompounder", () => {
     it("returns false when vault is paused", async () => {
       const { autoCompounder, mockStaking, vault, alice } = await loadFixture(deployTestFixture);
 
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       await mockStaking.addMockRewards(await vault.getAddress(), ethers.parseUnits("10", 10));
 
       // Pause the vault
@@ -45,7 +45,7 @@ describe("AutoCompounder", () => {
     it("calls vault.compoundRewards() and emits Compounded event", async () => {
       const { autoCompounder, mockStaking, vault, alice } = await loadFixture(deployTestFixture);
 
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       const reward = ethers.parseUnits("10", 10);
       await mockStaking.addMockRewards(await vault.getAddress(), reward);
 
@@ -65,7 +65,7 @@ describe("AutoCompounder", () => {
     it("increases exchange rate after compounding", async () => {
       const { autoCompounder, mockStaking, vault, alice } = await loadFixture(deployTestFixture);
 
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       const rateBefore = await vault.exchangeRate();
 
       const reward = ethers.parseUnits("10", 10);
@@ -92,6 +92,21 @@ describe("AutoCompounder", () => {
       await expect(
         autoCompounder.connect(alice).setMinRewardThreshold(ethers.parseUnits("5", 10))
       ).to.be.revertedWithCustomError(autoCompounder, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe("native vault mode", () => {
+    it("can compound direct native surplus when staking integration is disabled", async () => {
+      const { autoCompounder, vault, alice } = await loadFixture(deployNativeVaultModeFixture);
+
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
+      await alice.sendTransaction({
+        to: await vault.getAddress(),
+        value: ethers.parseUnits("10", 10),
+      });
+
+      expect(await autoCompounder.canCompound()).to.be.true;
     });
   });
 });

@@ -1,8 +1,16 @@
 "use client";
 
 import React from "react";
-import { formatDOT, formatStDOT, formatAPY, isZeroAddress } from "../lib/utils";
+import { useChainId } from "wagmi";
+import {
+  formatAPY,
+  formatDOT,
+  formatExchangeRate,
+  formatStDOT,
+  getNativeTokenSymbol,
+} from "../lib/utils";
 import type { VaultStats } from "../hooks/useVault";
+import { resolveDeploymentChainId } from "../lib/network";
 
 interface StatsBarProps {
   stats?: VaultStats;
@@ -10,24 +18,24 @@ interface StatsBarProps {
 }
 
 export default function StatsBar({ stats, isLoading }: StatsBarProps) {
+  const chainId = resolveDeploymentChainId(useChainId());
+  const nativeSymbol = getNativeTokenSymbol(chainId);
   const items = [
     {
-      label: "Total DOT Staked",
-      value: stats ? `${formatDOT(stats.totalDOTManaged)} DOT` : "—",
+      label: `Total ${nativeSymbol} Staked`,
+      value: stats ? `${formatDOT(stats.totalDOTManaged)} ${nativeSymbol}` : "—",
     },
     {
       label: "stDOT Supply",
       value: stats ? `${formatStDOT(stats.totalStDOTSupply)} stDOT` : "—",
     },
     {
-      label: "Current APY",
-      value: stats ? formatAPY(stats.annualizedAPY) : "—",
+      label: "Realized Yield",
+      value: stats ? formatAPY(stats.realizedYieldBps) : "—",
     },
     {
       label: "Exchange Rate",
-      value: stats
-        ? `1 stDOT = ${(Number(stats.exchangeRate) / 1e18).toFixed(8)} DOT`
-        : "—",
+      value: stats ? `1 stDOT = ${formatExchangeRate(stats.exchangeRate)} ${nativeSymbol}` : "—",
     },
     {
       label: "Status",

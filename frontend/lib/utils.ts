@@ -1,21 +1,39 @@
 /**
  * Utility functions for formatting and calculations
  */
+import { formatUnits, parseUnits } from "viem";
+
+function fixedFromUnits(value: bigint, decimals: number, fractionDigits = 4): string {
+  const formatted = formatUnits(value, decimals);
+  const [whole, fraction = ""] = formatted.split(".");
+  if (fractionDigits === 0) return whole;
+  const trimmedFraction = `${fraction}${"0".repeat(fractionDigits)}`.slice(0, fractionDigits);
+  return `${whole}.${trimmedFraction}`;
+}
+
+export function formatTokenAmount(value: bigint, decimals: number, fractionDigits = 2): string {
+  return fixedFromUnits(value, decimals, fractionDigits);
+}
 
 /**
  * Format a DOT amount (10 decimals) to a human-readable string with 4 decimal places
  */
 export function formatDOT(planck: bigint): string {
-  const dot = Number(planck) / 1e10;
-  return dot.toFixed(4);
+  return fixedFromUnits(planck, 10);
 }
 
 /**
  * Format a stDOT amount (18 decimals) to a human-readable string with 4 decimal places
  */
 export function formatStDOT(wei: bigint): string {
-  const stDot = Number(wei) / 1e18;
-  return stDot.toFixed(4);
+  return fixedFromUnits(wei, 18);
+}
+
+/**
+ * Format an exchange rate encoded as planck-per-stDOT with 10 asset decimals.
+ */
+export function formatExchangeRate(rate: bigint): string {
+  return fixedFromUnits(rate, 10, 6);
 }
 
 /**
@@ -23,26 +41,31 @@ export function formatStDOT(wei: bigint): string {
  * @param bps Basis points (100 bps = 1%)
  */
 export function formatAPY(bps: bigint): string {
-  const pct = Number(bps) / 100;
-  return pct.toFixed(2) + "%";
+  return fixedFromUnits(bps, 2, 2) + "%";
 }
 
 /**
  * Parse a human-readable DOT amount string to planck units (bigint)
  */
 export function parseDOT(dot: string): bigint {
-  const parsed = parseFloat(dot);
-  if (isNaN(parsed) || parsed < 0) return 0n;
-  return BigInt(Math.floor(parsed * 1e10));
+  if (!dot.trim()) return 0n;
+  try {
+    return parseUnits(dot, 10);
+  } catch {
+    return 0n;
+  }
 }
 
 /**
  * Parse a human-readable stDOT amount string to wei (bigint, 18 dec)
  */
 export function parseStDOT(stDot: string): bigint {
-  const parsed = parseFloat(stDot);
-  if (isNaN(parsed) || parsed < 0) return 0n;
-  return BigInt(Math.floor(parsed * 1e18));
+  if (!stDot.trim()) return 0n;
+  try {
+    return parseUnits(stDot, 18);
+  } catch {
+    return 0n;
+  }
 }
 
 /**
@@ -67,4 +90,12 @@ export function shortAddress(address: string): string {
  */
 export function isZeroAddress(address: string): boolean {
   return address === "0x0000000000000000000000000000000000000000";
+}
+
+/**
+ * Resolve the native gas token symbol for the connected Polkadot Hub network.
+ */
+export function getNativeTokenSymbol(chainId?: number): string {
+  if (chainId === 420420417) return "PAS";
+  return "DOT";
 }

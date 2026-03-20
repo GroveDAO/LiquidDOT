@@ -20,7 +20,7 @@ describe("StDOTToken", () => {
     const { vault, alice } = await loadFixture(deployTestFixture);
     const amount = ethers.parseUnits("100", 10);
 
-    await vault.connect(alice).deposit(amount, await alice.getAddress());
+    await vault.connect(alice).deposit(amount, await alice.getAddress(), { value: amount });
     expect(await vault.balanceOf(await alice.getAddress())).to.be.gt(0n);
   });
 
@@ -28,7 +28,7 @@ describe("StDOTToken", () => {
     const { vault, alice } = await loadFixture(deployTestFixture);
     const amount = ethers.parseUnits("100", 10);
 
-    await vault.connect(alice).deposit(amount, await alice.getAddress());
+    await vault.connect(alice).deposit(amount, await alice.getAddress(), { value: amount });
     const sharesBefore = await vault.balanceOf(await alice.getAddress());
 
     await vault.connect(alice).queueWithdrawal(ethers.parseUnits("50", 10));

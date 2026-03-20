@@ -1,37 +1,57 @@
 "use client";
 
 import React, { useState } from "react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useVault } from "../hooks/useVault";
-import { formatDOT, formatStDOT, parseStDOT } from "../lib/utils";
-import { DEPLOYED_ADDRESSES } from "../lib/contracts";
+import { formatDOT, formatStDOT, getNativeTokenSymbol, parseStDOT } from "../lib/utils";
+import { getDeploymentAddresses, resolveDeploymentChainId } from "../lib/network";
+import { useHydrated } from "../hooks/useHydrated";
 import { useChainId, useAccount } from "wagmi";
 
 export default function UnstakeCard() {
-  const chainId = useChainId();
-  const addresses = DEPLOYED_ADDRESSES[chainId];
+  const walletChainId = useChainId();
+  const chainId = resolveDeploymentChainId(walletChainId);
+  const nativeSymbol = getNativeTokenSymbol(chainId);
+  const addresses = getDeploymentAddresses(walletChainId);
   const vaultAddress = addresses?.vault as `0x${string}`;
-  const { queueWithdrawal, stDOTBalance, vaultStats, isLoading } = useVault(vaultAddress);
+  const {
+    estimatePreviewRedeem,
+    nativeStakingEnabled,
+    operatorStakingEnabled,
+    stakingModeResolved,
+    redeemShares,
+    stDOTBalance,
+    isLoading,
+  } = useVault(vaultAddress);
   const { isConnected } = useAccount();
+  const hydrated = useHydrated();
+  const { openConnectModal } = useConnectModal();
 
   const [amount, setAmount] = useState("");
   const [txStatus, setTxStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
 
   const parsedShares = parseStDOT(amount);
-  const previewDOT =
-    parsedShares > 0n && vaultStats
-      ? (parsedShares * vaultStats.exchangeRate) / BigInt(1e18)
-      : 0n;
-
+  const previewDOT = parsedShares > 0n ? estimatePreviewRedeem(parsedShares) : 0n;
   const handleUnstake = async () => {
     if (!parsedShares) return;
     try {
       setTxStatus("pending");
-      await queueWithdrawal(parsedShares);
+      await redeemShares(parsedShares);
       setTxStatus("success");
       setAmount("");
     } catch {
       setTxStatus("error");
     }
+  };
+
+  const handlePrimaryAction = async () => {
+    if (!hydrated) return;
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+
+    await handleUnstake();
   };
 
   if (!addresses) {
@@ -66,7 +86,7 @@ export default function UnstakeCard() {
           </button>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Balance: {formatStDOT(stDOTBalance)} stDOT
+          Balance: {hydrated ? formatStDOT(stDOTBalance) : "0.0000"} stDOT
         </p>
       </div>
 
@@ -75,24 +95,34 @@ export default function UnstakeCard() {
           <div className="flex justify-between text-sm">
             <span className="text-gray-500 dark:text-gray-400">You will receive</span>
             <span className="font-medium text-gray-900 dark:text-white">
-              {formatDOT(previewDOT)} DOT
+              {formatDOT(previewDOT)} {nativeSymbol}
             </span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-500 dark:text-gray-400">Unbonding period</span>
             <span className="font-medium text-gray-900 dark:text-white">
-              28 eras (~28 days)
+              {nativeStakingEnabled
+                ? "28 eras (~28 days)"
+                : stakingModeResolved && operatorStakingEnabled
+                ? "Funded by operator after native unbonding"
+                : stakingModeResolved
+                ? "Instant in vault mode"
+                : "Resolving staking mode..."}
             </span>
           </div>
         </div>
       )}
 
       <button
-        onClick={handleUnstake}
-        disabled={!isConnected || !parsedShares || isLoading}
+        onClick={() => void handlePrimaryAction()}
+        disabled={
+          !hydrated || isLoading || (!isConnected && !openConnectModal) || (isConnected && !parsedShares)
+        }
         className="w-full py-3 px-4 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {!isConnected
+        {!hydrated
+          ? "Loading Wallet..."
+          : !isConnected
           ? "Connect Wallet"
           : isLoading
           ? "Processing..."

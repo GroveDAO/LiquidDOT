@@ -6,11 +6,13 @@
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
     "deploy:testnet": "hardhat run scripts/deploy.ts --network polkadot_hub_testnet",
-    "deploy:mainnet": "hardhat run scripts/deploy.ts --network polkadot_hub",
     "verify:testnet": "hardhat run scripts/verify.ts --network polkadot_hub_testnet",
+    "seed:testnet": "hardhat run scripts/seed-demo.ts --network polkadot_hub_testnet",
+    "status:testnet": "hardhat run scripts/status.ts --network polkadot_hub_testnet",
+    "operator:sync:testnet": "hardhat operator:sync --network polkadot_hub_testnet",
     "compound": "hardhat compound --network polkadot_hub_testnet",
-    "frontend:dev": "cd frontend && next dev",
-    "frontend:build": "cd frontend && next build"
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.2",
@@ -19,6 +21,7 @@
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@nomicfoundation/hardhat-verify": "^2.1.3",
     "@openzeppelin/hardhat-upgrades": "^3.9.1",
+    "@polkadot/api": "^16.4.7",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.3.20",

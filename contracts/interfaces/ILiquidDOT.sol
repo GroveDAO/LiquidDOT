@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /// @title ILiquidDOT
-/// @notice ERC-4626-compatible interface for the LiquidDOT liquid staking vault
-/// @dev Extends IERC4626 with LiquidDOT-specific staking and withdrawal queue functions
-interface ILiquidDOT is IERC4626 {
+/// @notice Native-asset liquid staking vault interface for LiquidDOT
+/// @dev Mirrors ERC-4626-style share math while accepting the native gas token via payable deposits.
+interface ILiquidDOT is IERC20Metadata {
     // -----------------------------------------------------------------------
     // Structs
     // -----------------------------------------------------------------------
@@ -22,6 +22,18 @@ interface ILiquidDOT is IERC4626 {
     // -----------------------------------------------------------------------
     // Events
     // -----------------------------------------------------------------------
+
+    /// @notice ERC-4626-style deposit event for indexers and wallets.
+    event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
+
+    /// @notice ERC-4626-style withdrawal event for indexers and wallets.
+    event Withdraw(
+        address indexed sender,
+        address indexed receiver,
+        address indexed owner,
+        uint256 assets,
+        uint256 shares
+    );
 
     /// @notice Emitted when DOT is deposited and stDOT minted
     /// @param caller The address that initiated the stake
@@ -57,6 +69,58 @@ interface ILiquidDOT is IERC4626 {
     // -----------------------------------------------------------------------
     // View functions
     // -----------------------------------------------------------------------
+
+    /// @notice Returns the canonical native asset address sentinel.
+    /// @dev Native DOT/PAS is not an ERC-20, so implementations return address(0).
+    function asset() external view returns (address assetTokenAddress);
+
+    /// @notice Returns whether native staking precompile integration is enabled.
+    function nativeStakingEnabled() external view returns (bool enabled);
+
+    /// @notice Returns the total amount of native DOT managed by the vault.
+    function totalAssets() external view returns (uint256 totalManagedAssets);
+
+    /// @notice Converts a native-asset amount into vault shares.
+    function convertToShares(uint256 assets) external view returns (uint256 shares);
+
+    /// @notice Converts a vault share amount into native assets.
+    function convertToAssets(uint256 shares) external view returns (uint256 assets);
+
+    /// @notice Returns the maximum native asset amount that can be deposited for `receiver`.
+    function maxDeposit(address receiver) external view returns (uint256 maxAssets);
+
+    /// @notice Preview shares minted for a native-asset deposit.
+    function previewDeposit(uint256 assets) external view returns (uint256 shares);
+
+    /// @notice Deposit native assets and mint vault shares.
+    function deposit(uint256 assets, address receiver) external payable returns (uint256 shares);
+
+    /// @notice Returns the maximum shares that can be minted for `receiver`.
+    function maxMint(address receiver) external view returns (uint256 maxShares);
+
+    /// @notice Preview native assets required to mint `shares`.
+    function previewMint(uint256 shares) external view returns (uint256 assets);
+
+    /// @notice Mint exact shares by depositing the required native assets.
+    function mint(uint256 shares, address receiver) external payable returns (uint256 assets);
+
+    /// @notice Returns the maximum native assets that can be withdrawn for `owner`.
+    function maxWithdraw(address owner) external view returns (uint256 maxAssets);
+
+    /// @notice Preview shares burned to withdraw `assets`.
+    function previewWithdraw(uint256 assets) external view returns (uint256 shares);
+
+    /// @notice Queue a withdrawal for exact native assets.
+    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
+
+    /// @notice Returns the maximum shares that can be redeemed for `owner`.
+    function maxRedeem(address owner) external view returns (uint256 maxShares);
+
+    /// @notice Preview native assets received when redeeming `shares`.
+    function previewRedeem(uint256 shares) external view returns (uint256 assets);
+
+    /// @notice Queue a redemption for exact shares.
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
 
     /// @notice Get the current exchange rate of stDOT to DOT
     /// @return The exchange rate with 18 decimal precision (DOT per stDOT)

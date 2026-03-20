@@ -7,7 +7,7 @@ import { deployTestFixture } from "../helpers/setup";
 ///      deposit → compound → withdraw lifecycle.
 describe("FullFlow integration", () => {
   it("runs the complete stake → compound → withdraw flow", async () => {
-    const { vault, dot, autoCompounder, mockStaking, alice, bob, keeper } =
+    const { vault, autoCompounder, mockStaking, alice, bob, keeper } =
       await loadFixture(deployTestFixture);
 
     const ALICE_DEPOSIT = ethers.parseUnits("1000", 10);  // 1,000 DOT
@@ -17,7 +17,7 @@ describe("FullFlow integration", () => {
     // -----------------------------------------------------------------------
     // Step 1: Alice deposits 1,000 DOT → receives stDOT (1:1 at start)
     // -----------------------------------------------------------------------
-    await vault.connect(alice).deposit(ALICE_DEPOSIT, await alice.getAddress());
+    await vault.connect(alice).deposit(ALICE_DEPOSIT, await alice.getAddress(), { value: ALICE_DEPOSIT });
     const aliceShares1 = await vault.balanceOf(await alice.getAddress());
     expect(aliceShares1).to.be.gt(0n);
     expect(await vault.totalDOTManaged()).to.equal(ALICE_DEPOSIT);
@@ -25,7 +25,7 @@ describe("FullFlow integration", () => {
     // -----------------------------------------------------------------------
     // Step 2: Bob deposits 500 DOT
     // -----------------------------------------------------------------------
-    await vault.connect(bob).deposit(BOB_DEPOSIT, await bob.getAddress());
+    await vault.connect(bob).deposit(BOB_DEPOSIT, await bob.getAddress(), { value: BOB_DEPOSIT });
     const bobShares = await vault.balanceOf(await bob.getAddress());
     expect(bobShares).to.be.gt(0n);
     expect(await vault.totalDOTManaged()).to.equal(ALICE_DEPOSIT + BOB_DEPOSIT);
@@ -75,14 +75,14 @@ describe("FullFlow integration", () => {
     // -----------------------------------------------------------------------
     // Step 7: Alice claims withdrawal → receives DOT
     // -----------------------------------------------------------------------
-    // Fund vault with DOT to simulate withdrawUnbonded
-    await dot.mint(await vault.getAddress(), dotForHalfShares);
+    const aliceAddress = await alice.getAddress();
+    const aliceDotBefore = await ethers.provider.getBalance(aliceAddress);
+    const tx = await vault.connect(alice).claimWithdrawal(0n);
+    const receipt = await tx.wait();
+    const gasCost = (receipt?.gasUsed ?? 0n) * (receipt?.gasPrice ?? 0n);
+    const aliceDotAfter = await ethers.provider.getBalance(aliceAddress);
 
-    const aliceDotBefore = await dot.balanceOf(await alice.getAddress());
-    await vault.connect(alice).claimWithdrawal(0n);
-    const aliceDotAfter = await dot.balanceOf(await alice.getAddress());
-
-    expect(aliceDotAfter - aliceDotBefore).to.equal(dotForHalfShares);
+    expect(aliceDotAfter + gasCost - aliceDotBefore).to.equal(dotForHalfShares);
     expect((await vault.withdrawalRequests(0n)).claimed).to.be.true;
 
     // -----------------------------------------------------------------------

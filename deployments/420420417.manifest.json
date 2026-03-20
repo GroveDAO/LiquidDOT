@@ -1,0 +1,107 @@
+{
+  "chainId": 420420417,
+  "network": "polkadot_hub_testnet",
+  "deployer": "0x9f2EdCE3a34e42eaf8f965d4E14aDDd12Cf865f4",
+  "deployedAt": "2026-03-20T02:01:42.464Z",
+  "contracts": [
+    {
+      "name": "DOT",
+      "address": "0x0000000000000000000000000000000000000000",
+      "constructorArgs": [],
+      "verifiable": false
+    },
+    {
+      "name": "GovToken",
+      "address": "0x7bEd5956dD1cC8A15CC623230763775f95857981",
+      "contract": "contracts/governance/GovToken.sol:GovToken",
+      "constructorArgs": [
+        "0x9f2EdCE3a34e42eaf8f965d4E14aDDd12Cf865f4"
+      ],
+      "verifiable": true,
+      "txHash": "0x38be7f83ba177a9f45b71b8a28f08533c8df5c7b10084ebd224e4085051d9d5c"
+    },
+    {
+      "name": "StakingPrecompile",
+      "address": "0x0000000000000000000000000000000000000800",
+      "constructorArgs": [],
+      "verifiable": false
+    },
+    {
+      "name": "StDOTToken",
+      "address": "0xc79E3E0c71a0E7ED4209B3e8e5753665AE19d606",
+      "contract": "contracts/core/StDOTToken.sol:StDOTToken",
+      "constructorArgs": [
+        "0x9f2EdCE3a34e42eaf8f965d4E14aDDd12Cf865f4"
+      ],
+      "verifiable": true,
+      "txHash": "0x3d24fa543f7e3443d8d4c48ae9c6263bfb4b7f32447b1c1cd71144f052b7f211"
+    },
+    {
+      "name": "TimelockController",
+      "address": "0xD1d1ee0eC8B1460fc235C830179b9221549cB155",
+      "contract": "@openzeppelin/contracts/governance/TimelockController.sol:TimelockController",
+      "constructorArgs": [
+        172800,
+        [],
+        [],
+        "0x9f2EdCE3a34e42eaf8f965d4E14aDDd12Cf865f4"
+      ],
+      "verifiable": true,
+      "txHash": "0x111cf164324cf252b4d09198ece7a306337be3d92a05264964a4b31a730b3917"
+    },
+    {
+      "name": "LiquidDOTVault",
+      "address": "0x0004DF4A37C6541453e8C01182d0611eFaa76ffb",
+      "contract": "contracts/core/LiquidDOTVault.sol:LiquidDOTVault",
+      "constructorArgs": [
+        "0x0000000000000000000000000000000000000800",
+        false
+      ],
+      "verifiable": true,
+      "txHash": "0x68a3545cba0c10e07b1bef0c1155c7dd7b3d69f86c012fb3ad45bd59833a8eda"
+    },
+    {
+      "name": "ValidatorRegistry",
+      "address": "0x69bc6e363B01d06a9939C0F8c1653D702118058b",
+      "contract": "contracts/core/ValidatorRegistry.sol:ValidatorRegistry",
+      "constructorArgs": [
+        "0x0004DF4A37C6541453e8C01182d0611eFaa76ffb",
+        "0x0000000000000000000000000000000000000800",
+        "0x9f2EdCE3a34e42eaf8f965d4E14aDDd12Cf865f4",
+        false
+      ],
+      "verifiable": true,
+      "txHash": "0x268a443127aa61ca2505aba4f4649ab21b62cf62bf6c4aa4625fcc570ac74d4f"
+    },
+    {
+      "name": "ValidatorGovernor",
+      "address": "0xC8f7532c0bA448aB4D6C27CC56d7ddfaB9BF1599",
+      "contract": "contracts/governance/ValidatorGovernor.sol:ValidatorGovernor",
+      "constructorArgs": [
+        "0x7bEd5956dD1cC8A15CC623230763775f95857981",
+        "0xD1d1ee0eC8B1460fc235C830179b9221549cB155",
+        "0x69bc6e363B01d06a9939C0F8c1653D702118058b"
+      ],
+      "verifiable": true,
+      "txHash": "0xcb20a6627945dc92a1fa3c4ce453d280eabe4bf65c1ffa78b427f8490dea56be"
+    },
+    {
+      "name": "AutoCompounder",
+      "address": "0xD02Ab915f06437fB22d889F5a50fac00577C6C7B",
+      "contract": "contracts/periphery/AutoCompounder.sol:AutoCompounder",
+      "constructorArgs": [
+        "0x0004DF4A37C6541453e8C01182d0611eFaa76ffb"
+      ],
+      "verifiable": true,
+      "txHash": "0x889a53908885531eb0f51f2c789a391c6fbfacb6e1b33323ccf118cfc03d8550"
+    },
+    {
+      "name": "LiquidDOTLens",
+      "address": "0x0C287c8B5E343bE6A869C8AdCeF33B00E0Be24f2",
+      "contract": "contracts/periphery/LiquidDOTLens.sol:LiquidDOTLens",
+      "constructorArgs": [],
+      "verifiable": true,
+      "txHash": "0x5c659c9a4396a5ad75ba5e07ff175086a6ce69ae2d05f66f4e8da2b98c16658e"
+    }
+  ]
+}

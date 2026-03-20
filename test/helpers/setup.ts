@@ -1,12 +1,10 @@
 import { ethers } from "hardhat";
 import { Signer } from "ethers";
 import {
-  MockDOT,
   MockStakingPrecompile,
   LiquidDOTVault,
   AutoCompounder,
   LiquidDOTLens,
-  StDOTToken,
 } from "../../typechain-types";
 
 export interface TestFixture {
@@ -14,7 +12,6 @@ export interface TestFixture {
   alice: Signer;
   bob: Signer;
   keeper: Signer;
-  dot: MockDOT;
   mockStaking: MockStakingPrecompile;
   vault: LiquidDOTVault;
   autoCompounder: AutoCompounder;
@@ -29,10 +26,6 @@ export const ONE_DOT = ethers.parseUnits("1", 10);
 export async function deployTestFixture(): Promise<TestFixture> {
   const [deployer, alice, bob, keeper] = await ethers.getSigners();
 
-  // Deploy MockDOT
-  const MockDOTFactory = await ethers.getContractFactory("MockDOT");
-  const dot = (await MockDOTFactory.deploy()) as unknown as MockDOT;
-
   // Deploy MockStakingPrecompile
   const MockStakingFactory = await ethers.getContractFactory("MockStakingPrecompile");
   const mockStaking = (await MockStakingFactory.deploy()) as unknown as MockStakingPrecompile;
@@ -41,7 +34,7 @@ export async function deployTestFixture(): Promise<TestFixture> {
   const VaultFactory = await ethers.getContractFactory("LiquidDOTVault");
   const vault = (await VaultFactory.deploy(
     await mockStaking.getAddress(),
-    await dot.getAddress()
+    true
   )) as unknown as LiquidDOTVault;
 
   // Deploy AutoCompounder
@@ -61,24 +54,47 @@ export async function deployTestFixture(): Promise<TestFixture> {
   // Grant KEEPER_ROLE to keeper signer for direct testing
   await vault.grantRole(KEEPER_ROLE, await keeper.getAddress());
 
-  // Mint DOT to alice and bob
-  await dot.mint(await alice.getAddress(), TEN_THOUSAND_DOT);
-  await dot.mint(await bob.getAddress(), TEN_THOUSAND_DOT);
+  return {
+    deployer,
+    alice,
+    bob,
+    keeper,
+    mockStaking,
+    vault,
+    autoCompounder,
+    lens,
+  };
+}
 
-  // Alice approves vault for max DOT
-  const aliceDot = dot.connect(alice);
-  await aliceDot.approve(await vault.getAddress(), ethers.MaxUint256);
+export async function deployNativeVaultModeFixture(): Promise<TestFixture> {
+  const [deployer, alice, bob, keeper] = await ethers.getSigners();
 
-  // Bob approves vault for max DOT
-  const bobDot = dot.connect(bob);
-  await bobDot.approve(await vault.getAddress(), ethers.MaxUint256);
+  const MockStakingFactory = await ethers.getContractFactory("MockStakingPrecompile");
+  const mockStaking = (await MockStakingFactory.deploy()) as unknown as MockStakingPrecompile;
+
+  const VaultFactory = await ethers.getContractFactory("LiquidDOTVault");
+  const vault = (await VaultFactory.deploy(
+    await mockStaking.getAddress(),
+    false
+  )) as unknown as LiquidDOTVault;
+
+  const AutoCompounderFactory = await ethers.getContractFactory("AutoCompounder");
+  const autoCompounder = (await AutoCompounderFactory.deploy(
+    await vault.getAddress()
+  )) as unknown as AutoCompounder;
+
+  const LensFactory = await ethers.getContractFactory("LiquidDOTLens");
+  const lens = (await LensFactory.deploy()) as unknown as LiquidDOTLens;
+
+  const KEEPER_ROLE = await vault.KEEPER_ROLE();
+  await vault.grantRole(KEEPER_ROLE, await autoCompounder.getAddress());
+  await vault.grantRole(KEEPER_ROLE, await keeper.getAddress());
 
   return {
     deployer,
     alice,
     bob,
     keeper,
-    dot,
     mockStaking,
     vault,
     autoCompounder,

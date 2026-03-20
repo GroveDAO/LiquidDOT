@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {ILiquidDOT} from "../interfaces/ILiquidDOT.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title LiquidDOTLens
 /// @notice Read-only aggregator for LiquidDOT vault and user position data
@@ -28,7 +27,16 @@ contract LiquidDOTLens {
     struct UserPosition {
         uint256 stDOTBalance;                          // User's stDOT balance
         uint256 dotValue;                              // Equivalent DOT value
-        ILiquidDOT.WithdrawalRequest[] pendingWithdrawals; // Active withdrawal requests
+        PendingWithdrawal[] pendingWithdrawals;        // Active withdrawal requests
+    }
+
+    /// @notice A withdrawal request paired with its request ID.
+    struct PendingWithdrawal {
+        uint256 requestId;
+        address owner;
+        uint256 dotAmount;
+        uint32 unbondEra;
+        bool claimed;
     }
 
     // -----------------------------------------------------------------------
@@ -49,34 +57,24 @@ contract LiquidDOTLens {
         stats.exchangeRate = vault.exchangeRate();
         stats.pendingRewards = vault.pendingRewards();
         stats.unbondingPeriodEras = vault.unbondingPeriod();
-
-        // stDOT total supply via ERC-20 interface
-        address stDOTAddr = address(0);
-        (bool ok, bytes memory data) = vaultAddress.staticcall(
-            abi.encodeWithSignature("stDOT()")
-        );
-        if (ok && data.length >= 32) {
-            stDOTAddr = abi.decode(data, (address));
-            stats.totalStDOTSupply = IERC20(stDOTAddr).totalSupply();
-        }
+        stats.totalStDOTSupply = vault.totalSupply();
 
         // Nominees
-        (bool ok2, bytes memory data2) = vaultAddress.staticcall(
+        (bool ok, bytes memory data) = vaultAddress.staticcall(
             abi.encodeWithSignature("getCurrentNomineesView()")
         );
-        if (!ok2) {
-            // Try reading the public array length
+        if (!ok) {
             stats.currentNominees = new address[](0);
         } else {
-            stats.currentNominees = abi.decode(data2, (address[]));
+            stats.currentNominees = abi.decode(data, (address[]));
         }
 
         // Paused status
-        (bool ok3, bytes memory data3) = vaultAddress.staticcall(
+        (bool ok2, bytes memory data2) = vaultAddress.staticcall(
             abi.encodeWithSignature("paused()")
         );
-        if (ok3 && data3.length >= 32) {
-            stats.isPaused = abi.decode(data3, (bool));
+        if (ok2 && data2.length >= 32) {
+            stats.isPaused = abi.decode(data2, (bool));
         }
 
         // APY: placeholder — 0 until an oracle is integrated
@@ -94,14 +92,7 @@ contract LiquidDOTLens {
     {
         ILiquidDOT vault = ILiquidDOT(vaultAddress);
 
-        // stDOT balance
-        (bool ok, bytes memory data) = vaultAddress.staticcall(
-            abi.encodeWithSignature("stDOT()")
-        );
-        if (ok && data.length >= 32) {
-            address stDOTAddr = abi.decode(data, (address));
-            position.stDOTBalance = IERC20(stDOTAddr).balanceOf(user);
-        }
+        position.stDOTBalance = vault.balanceOf(user);
 
         uint256 rate = vault.exchangeRate();
         // dotValue = stDOTBalance * rate / 1e18 (both in 18-dec space, result in planck)
@@ -114,8 +105,7 @@ contract LiquidDOTLens {
         if (ok2 && data2.length >= 32) {
             uint256 nextId = abi.decode(data2, (uint256));
             // Collect requests belonging to this user
-            ILiquidDOT.WithdrawalRequest[] memory tmp =
-                new ILiquidDOT.WithdrawalRequest[](nextId);
+            PendingWithdrawal[] memory tmp = new PendingWithdrawal[](nextId);
             uint256 count = 0;
             for (uint256 i = 0; i < nextId; i++) {
                 (bool ok3, bytes memory data3) = vaultAddress.staticcall(
@@ -125,7 +115,8 @@ contract LiquidDOTLens {
                     (address owner, uint256 dotAmount, uint32 unbondEra, bool claimed) =
                         abi.decode(data3, (address, uint256, uint32, bool));
                     if (owner == user && !claimed) {
-                        tmp[count++] = ILiquidDOT.WithdrawalRequest({
+                        tmp[count++] = PendingWithdrawal({
+                            requestId: i,
                             owner: owner,
                             dotAmount: dotAmount,
                             unbondEra: unbondEra,
@@ -134,7 +125,7 @@ contract LiquidDOTLens {
                     }
                 }
             }
-            position.pendingWithdrawals = new ILiquidDOT.WithdrawalRequest[](count);
+            position.pendingWithdrawals = new PendingWithdrawal[](count);
             for (uint256 i = 0; i < count; i++) {
                 position.pendingWithdrawals[i] = tmp[i];
             }

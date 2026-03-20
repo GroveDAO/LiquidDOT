@@ -10,6 +10,13 @@ dotenv.config();
 // Import custom tasks
 import "./scripts/tasks/nominate";
 import "./scripts/tasks/compound";
+import "./scripts/tasks/operator";
+
+const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY
+  ? process.env.DEPLOYER_PRIVATE_KEY.startsWith("0x")
+    ? process.env.DEPLOYER_PRIVATE_KEY
+    : `0x${process.env.DEPLOYER_PRIVATE_KEY}`
+  : undefined;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -28,14 +35,9 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     polkadot_hub_testnet: {
-      chainId: 420420421,
-      url: process.env.POLKADOT_HUB_TESTNET_RPC ?? "https://rpc.pah.zeitgeist.pm",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
-    },
-    polkadot_hub: {
-      chainId: 420420420,
-      url: process.env.POLKADOT_HUB_RPC ?? "https://rpc.polkadot.io",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
+      chainId: 420420417,
+      url: process.env.POLKADOT_HUB_TESTNET_RPC ?? "https://services.polkadothub-rpc.com/testnet",
+      accounts: deployerPrivateKey ? [deployerPrivateKey] : [],
     },
   },
   typechain: {
@@ -48,24 +50,15 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      polkadot_hub_testnet: process.env.BLOCKSCOUT_API_KEY ?? "",
-      polkadot_hub: process.env.BLOCKSCOUT_API_KEY ?? "",
+      polkadot_hub_testnet: process.env.BLOCKSCOUT_API_KEY ?? "verifyContract",
     },
     customChains: [
       {
         network: "polkadot_hub_testnet",
-        chainId: 420420421,
+        chainId: 420420417,
         urls: {
-          apiURL: "https://blockscout.pah.zeitgeist.pm/api",
-          browserURL: "https://blockscout.pah.zeitgeist.pm",
-        },
-      },
-      {
-        network: "polkadot_hub",
-        chainId: 420420420,
-        urls: {
-          apiURL: "https://blockscout.polkadot.network/api",
-          browserURL: "https://blockscout.polkadot.network",
+          apiURL: "https://api.routescan.io/v2/network/testnet/evm/420420417/etherscan",
+          browserURL: "https://blockscout-testnet.polkadot.io",
         },
       },
     ],

@@ -1,52 +1,71 @@
 import { run, ethers } from "hardhat";
-import * as fs from "fs";
-import * as path from "path";
+import { DeploymentEntry, readDeploymentManifest } from "./lib/deployments";
 
-// Constructor args for each contract, in deployment order
-const CONSTRUCTOR_ARGS: Record<string, () => unknown[]> = {
-  MockDOT: () => [],
-  GovToken: () => {
-    // requires deployer address — skip re-verification or read from env
-    return [];
-  },
-  MockStakingPrecompile: () => [],
-  StakingPrecompile: () => [],
-  StDOTToken: () => [],
-  LiquidDOTVault: () => [],
-  ValidatorRegistry: () => [],
-  ValidatorGovernor: () => [],
-  AutoCompounder: () => [],
-  LiquidDOTLens: () => [],
-};
+const RETRYABLE_PATTERNS = [
+  /unable to locate contractcode/i,
+  /contract source code not verified/i,
+  /does not have bytecode/i,
+  /not found/i,
+  /rate limit/i,
+  /timeout/i,
+];
 
-async function main(): Promise<void> {
-  const chainId = (await ethers.provider.getNetwork()).chainId;
-  const deploymentsPath = path.join(__dirname, "../deployments", `${chainId}.json`);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  if (!fs.existsSync(deploymentsPath)) {
-    console.error(`No deployments file found at ${deploymentsPath}`);
-    process.exit(1);
-  }
+async function verifyContract(entry: DeploymentEntry): Promise<"verified" | "already-verified"> {
+  const maxAttempts = 5;
 
-  const deployed: Record<string, string> = JSON.parse(
-    fs.readFileSync(deploymentsPath, "utf-8")
-  );
-
-  for (const [name, address] of Object.entries(deployed)) {
-    console.log(`Verifying ${name} at ${address}...`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await run("verify:verify", {
-        address,
-        constructorArguments: CONSTRUCTOR_ARGS[name]?.() ?? [],
+        address: entry.address,
+        contract: entry.contract,
+        constructorArguments: entry.constructorArgs,
       });
-      console.log(`  ✓ ${name} verified`);
+      return "verified";
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes("already verified")) {
-        console.log(`  ✓ ${name} already verified`);
-      } else {
-        console.warn(`  ✗ ${name} verification failed: ${msg}`);
+        return "already-verified";
       }
+
+      const shouldRetry =
+        attempt < maxAttempts &&
+        RETRYABLE_PATTERNS.some((pattern) => pattern.test(msg));
+
+      if (!shouldRetry) {
+        throw err;
+      }
+
+      console.warn(
+        `  Verification not ready yet (attempt ${attempt}/${maxAttempts}): ${msg}`
+      );
+      console.warn("  Waiting 15 seconds before retrying...");
+      await sleep(15_000);
+    }
+  }
+
+  throw new Error(`Verification exhausted retries for ${entry.name}`);
+}
+
+async function main(): Promise<void> {
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  const manifest = readDeploymentManifest(chainId);
+
+  for (const entry of manifest.contracts.filter((item) => item.verifiable !== false && item.contract)) {
+    console.log(`Verifying ${entry.name} at ${entry.address}...`);
+    try {
+      const status = await verifyContract(entry);
+      console.log(
+        status === "already-verified"
+          ? `  ✓ ${entry.name} already verified`
+          : `  ✓ ${entry.name} verified`
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  ✗ ${entry.name} verification failed: ${msg}`);
     }
   }
 

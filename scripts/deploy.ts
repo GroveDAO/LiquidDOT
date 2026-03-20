@@ -1,64 +1,96 @@
 import { ethers, network } from "hardhat";
-import * as fs from "fs";
-import * as path from "path";
+import { DeploymentEntry, syncDeploymentOutputs, writeDeploymentFiles } from "./lib/deployments";
 
 async function main(): Promise<void> {
   const [deployer] = await ethers.getSigners();
   const chainId = (await ethers.provider.getNetwork()).chainId;
-  const isMainnet = chainId === 420420420n;
+  const chainIdNumber = Number(chainId);
   const isLocal = chainId === 31337n;
+  const nativeAssetAddress = ethers.ZeroAddress;
+  const canonicalStakingPrecompile = "0x0000000000000000000000000000000000000800";
+  const nativeStakingEnabled =
+    isLocal || process.env.POLKADOT_HUB_ENABLE_NATIVE_STAKING === "true";
 
   console.log("=".repeat(60));
   console.log("LiquidDOT Deployment");
   console.log(`Network: ${network.name} (chainId: ${chainId})`);
   console.log(`Deployer: ${deployer.address}`);
+  console.log(`Native staking enabled: ${nativeStakingEnabled}`);
   console.log("=".repeat(60));
 
   const deployed: Record<string, string> = {};
-  const confirmations = isLocal ? 1 : 5;
+  const manifestEntries: DeploymentEntry[] = [];
+  const confirmations = isLocal || chainId === 420420417n ? 1 : 5;
 
-  async function deploy<T>(name: string, factory: Awaited<ReturnType<typeof ethers.getContractFactory>>, args: unknown[]): Promise<T> {
+  async function deploy<T>(
+    name: string,
+    contractId: string,
+    factory: Awaited<ReturnType<typeof ethers.getContractFactory>>,
+    args: unknown[]
+  ): Promise<T> {
     console.log(`\nDeploying ${name}...`);
     const contract = await factory.deploy(...args);
-    await contract.deploymentTransaction()?.wait(confirmations);
+    const deploymentTx = contract.deploymentTransaction();
+    await deploymentTx?.wait(confirmations);
     const address = await contract.getAddress();
     deployed[name] = address;
+    manifestEntries.push({
+      name,
+      address,
+      contract: contractId,
+      constructorArgs: args,
+      verifiable: true,
+      txHash: deploymentTx?.hash,
+    });
     console.log(`  ✓ ${name}: ${address}`);
     return contract as T;
   }
 
   // ---------------------------------------------------------------------------
-  // Step 1: MockDOT (only on non-mainnet) or use native DOT address
+  // Step 1: Record the native gas token sentinel
   // ---------------------------------------------------------------------------
-  let dotAddress: string;
-  if (!isMainnet) {
-    const MockDOTFactory = await ethers.getContractFactory("MockDOT");
-    const mockDOT = await deploy<{ getAddress(): Promise<string> }>("MockDOT", MockDOTFactory, []);
-    dotAddress = await mockDOT.getAddress();
-  } else {
-    dotAddress = process.env.DOT_TOKEN_ADDRESS ?? "";
-    if (!dotAddress) throw new Error("DOT_TOKEN_ADDRESS env var required on mainnet");
-    deployed["DOT"] = dotAddress;
-  }
+  deployed["DOT"] = nativeAssetAddress;
+  manifestEntries.push({
+    name: "DOT",
+    address: nativeAssetAddress,
+    constructorArgs: [],
+    verifiable: false,
+  });
 
   // ---------------------------------------------------------------------------
   // Step 2: GovToken
   // ---------------------------------------------------------------------------
   const GovTokenFactory = await ethers.getContractFactory("GovToken");
-  const govToken = await deploy<{ getAddress(): Promise<string> }>("GovToken", GovTokenFactory, [deployer.address]);
+  const govToken = await deploy<{ getAddress(): Promise<string> }>(
+    "GovToken",
+    "contracts/governance/GovToken.sol:GovToken",
+    GovTokenFactory,
+    [deployer.address]
+  );
 
   // ---------------------------------------------------------------------------
-  // Step 3: StakingPrecompile wrapper (or MockStakingPrecompile on local)
+  // Step 3: Staking precompile (or mock on local Hardhat)
   // ---------------------------------------------------------------------------
   let stakingPrecompileAddress: string;
   if (isLocal) {
     const MockStakingFactory = await ethers.getContractFactory("MockStakingPrecompile");
-    const mockStaking = await deploy<{ getAddress(): Promise<string> }>("MockStakingPrecompile", MockStakingFactory, []);
+    const mockStaking = await deploy<{ getAddress(): Promise<string> }>(
+      "MockStakingPrecompile",
+      "contracts/mocks/MockStakingPrecompile.sol:MockStakingPrecompile",
+      MockStakingFactory,
+      []
+    );
     stakingPrecompileAddress = await mockStaking.getAddress();
   } else {
-    const StakingFactory = await ethers.getContractFactory("StakingPrecompile");
-    const staking = await deploy<{ getAddress(): Promise<string> }>("StakingPrecompile", StakingFactory, []);
-    stakingPrecompileAddress = await staking.getAddress();
+    stakingPrecompileAddress = canonicalStakingPrecompile;
+    deployed["StakingPrecompile"] = stakingPrecompileAddress;
+    manifestEntries.push({
+      name: "StakingPrecompile",
+      address: stakingPrecompileAddress,
+      constructorArgs: [],
+      verifiable: false,
+    });
+    console.log(`\nUsing canonical staking precompile: ${stakingPrecompileAddress}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -66,7 +98,10 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------------
   const StDOTTokenFactory = await ethers.getContractFactory("StDOTToken");
   const stDOTToken = await deploy<{ getAddress(): Promise<string>; grantVaultRole(addr: string): Promise<{ wait(): Promise<void> }> }>(
-    "StDOTToken", StDOTTokenFactory, [deployer.address]
+    "StDOTToken",
+    "contracts/core/StDOTToken.sol:StDOTToken",
+    StDOTTokenFactory,
+    [deployer.address]
   );
 
   // ---------------------------------------------------------------------------
@@ -75,7 +110,10 @@ async function main(): Promise<void> {
   const TimelockFactory = await ethers.getContractFactory("TimelockController");
   const minDelay = 2 * 24 * 60 * 60; // 2 days
   const timelock = await deploy<{ getAddress(): Promise<string>; grantRole(role: string, addr: string): Promise<{ wait(): Promise<void> }> }>(
-    "TimelockController", TimelockFactory, [minDelay, [], [], deployer.address]
+    "TimelockController",
+    "@openzeppelin/contracts/governance/TimelockController.sol:TimelockController",
+    TimelockFactory,
+    [minDelay, [], [], deployer.address]
   );
 
   // ---------------------------------------------------------------------------
@@ -87,7 +125,12 @@ async function main(): Promise<void> {
     grantRole(role: string, addr: string): Promise<{ wait(): Promise<void> }>;
     KEEPER_ROLE(): Promise<string>;
     GOVERNANCE_ROLE(): Promise<string>;
-  }>("LiquidDOTVault", VaultFactory, [stakingPrecompileAddress, dotAddress]);
+  }>(
+    "LiquidDOTVault",
+    "contracts/core/LiquidDOTVault.sol:LiquidDOTVault",
+    VaultFactory,
+    [stakingPrecompileAddress, nativeStakingEnabled]
+  );
   const vaultAddress = await vault.getAddress();
 
   // ---------------------------------------------------------------------------
@@ -102,7 +145,10 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------------
   const RegistryFactory = await ethers.getContractFactory("ValidatorRegistry");
   const registry = await deploy<{ getAddress(): Promise<string> }>(
-    "ValidatorRegistry", RegistryFactory, [vaultAddress, stakingPrecompileAddress, deployer.address]
+    "ValidatorRegistry",
+    "contracts/core/ValidatorRegistry.sol:ValidatorRegistry",
+    RegistryFactory,
+    [vaultAddress, stakingPrecompileAddress, deployer.address, nativeStakingEnabled]
   );
   const registryAddress = await registry.getAddress();
 
@@ -111,7 +157,10 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------------
   const GovernorFactory = await ethers.getContractFactory("ValidatorGovernor");
   const governor = await deploy<{ getAddress(): Promise<string> }>(
-    "ValidatorGovernor", GovernorFactory, [await govToken.getAddress(), await timelock.getAddress(), registryAddress]
+    "ValidatorGovernor",
+    "contracts/governance/ValidatorGovernor.sol:ValidatorGovernor",
+    GovernorFactory,
+    [await govToken.getAddress(), await timelock.getAddress(), registryAddress]
   );
   const governorAddress = await governor.getAddress();
 
@@ -141,7 +190,10 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------------
   const AutoCompounderFactory = await ethers.getContractFactory("AutoCompounder");
   const autoCompounder = await deploy<{ getAddress(): Promise<string> }>(
-    "AutoCompounder", AutoCompounderFactory, [vaultAddress]
+    "AutoCompounder",
+    "contracts/periphery/AutoCompounder.sol:AutoCompounder",
+    AutoCompounderFactory,
+    [vaultAddress]
   );
   const autoCompounderAddress = await autoCompounder.getAddress();
 
@@ -157,17 +209,26 @@ async function main(): Promise<void> {
   // Step 15: LiquidDOTLens
   // ---------------------------------------------------------------------------
   const LensFactory = await ethers.getContractFactory("LiquidDOTLens");
-  await deploy("LiquidDOTLens", LensFactory, []);
+  await deploy(
+    "LiquidDOTLens",
+    "contracts/periphery/LiquidDOTLens.sol:LiquidDOTLens",
+    LensFactory,
+    []
+  );
 
   // ---------------------------------------------------------------------------
   // Step 16: Write deployments to file
   // ---------------------------------------------------------------------------
-  const deploymentsDir = path.join(__dirname, "../deployments");
-  if (!fs.existsSync(deploymentsDir)) fs.mkdirSync(deploymentsDir, { recursive: true });
-
-  const outputPath = path.join(deploymentsDir, `${chainId}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(deployed, null, 2));
-  console.log(`\nDeployments written to: ${outputPath}`);
+  const { addressBookPath, manifestPath } = writeDeploymentFiles({
+    chainId: chainIdNumber,
+    network: network.name,
+    deployer: deployer.address,
+    contracts: manifestEntries,
+  });
+  syncDeploymentOutputs({ chainId: chainIdNumber, deployments: deployed });
+  console.log(`\nDeployments written to: ${addressBookPath}`);
+  console.log(`Deployment manifest written to: ${manifestPath}`);
+  console.log("Synchronized addresses to .env, frontend/.env, and frontend/lib/contracts.ts");
 
   // ---------------------------------------------------------------------------
   // Step 17: Summary table

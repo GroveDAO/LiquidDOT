@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { deployTestFixture, ONE_DOT } from "../helpers/setup";
+import { deployNativeVaultModeFixture, deployTestFixture, ONE_DOT } from "../helpers/setup";
 
 describe("LiquidDOTVault", () => {
   const THOUSAND_DOT = ethers.parseUnits("1000", 10);
@@ -16,8 +16,8 @@ describe("LiquidDOTVault", () => {
     });
 
     it("initializes with correct DOT asset address", async () => {
-      const { vault, dot } = await loadFixture(deployTestFixture);
-      expect(await vault.asset()).to.equal(await dot.getAddress());
+      const { vault } = await loadFixture(deployTestFixture);
+      expect(await vault.asset()).to.equal(ethers.ZeroAddress);
     });
 
     it("deployer has DEFAULT_ADMIN_ROLE", async () => {
@@ -42,7 +42,11 @@ describe("LiquidDOTVault", () => {
     it("mints stDOT at correct rate on first deposit", async () => {
       const { vault, alice } = await loadFixture(deployTestFixture);
 
-      const tx = await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      const tx = await vault.connect(alice).deposit(
+        THOUSAND_DOT,
+        await alice.getAddress(),
+        { value: THOUSAND_DOT }
+      );
       await tx.wait();
 
       const stDOTBalance = await vault.balanceOf(await alice.getAddress());
@@ -54,7 +58,9 @@ describe("LiquidDOTVault", () => {
       const { vault, alice } = await loadFixture(deployTestFixture);
       const aliceAddr = await alice.getAddress();
 
-      await expect(vault.connect(alice).deposit(THOUSAND_DOT, aliceAddr))
+      await expect(
+        vault.connect(alice).deposit(THOUSAND_DOT, aliceAddr, { value: THOUSAND_DOT })
+      )
         .to.emit(vault, "Staked")
         .withArgs(aliceAddr, aliceAddr, THOUSAND_DOT, (shares: bigint) => shares > 0n);
     });
@@ -62,14 +68,14 @@ describe("LiquidDOTVault", () => {
     it("updates totalDOTManaged after deposit", async () => {
       const { vault, alice } = await loadFixture(deployTestFixture);
 
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       expect(await vault.totalDOTManaged()).to.equal(THOUSAND_DOT);
     });
 
     it("calls bondExtra on staking precompile", async () => {
       const { vault, mockStaking, alice } = await loadFixture(deployTestFixture);
 
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       const stake = await mockStaking.getStake(await vault.getAddress());
       expect(stake).to.equal(THOUSAND_DOT);
     });
@@ -79,7 +85,7 @@ describe("LiquidDOTVault", () => {
 
       await vault.pause();
       await expect(
-        vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress())
+        vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT })
       ).to.be.revertedWithCustomError(vault, "EnforcedPause");
     });
 
@@ -87,17 +93,15 @@ describe("LiquidDOTVault", () => {
       const { vault, alice } = await loadFixture(deployTestFixture);
 
       await expect(
-        vault.connect(alice).deposit(0n, await alice.getAddress())
+        vault.connect(alice).deposit(0n, await alice.getAddress(), { value: 0n })
       ).to.be.revertedWith("LiquidDOTVault: zero deposit");
     });
 
-    it("reverts if DOT transfer fails (insufficient balance)", async () => {
-      const { vault, deployer, dot } = await loadFixture(deployTestFixture);
-      // deployer has no DOT and no approval
-      await dot.connect(deployer).approve(await vault.getAddress(), ethers.MaxUint256);
+    it("reverts if msg.value does not match the requested asset amount", async () => {
+      const { vault, deployer } = await loadFixture(deployTestFixture);
       await expect(
-        vault.connect(deployer).deposit(ONE_DOT, await deployer.getAddress())
-      ).to.be.reverted;
+        vault.connect(deployer).deposit(ONE_DOT, await deployer.getAddress(), { value: 0n })
+      ).to.be.revertedWith("LiquidDOTVault: value mismatch");
     });
   });
 
@@ -106,7 +110,7 @@ describe("LiquidDOTVault", () => {
     async function depositFixture() {
       const base = await loadFixture(deployTestFixture);
       const { vault, alice } = base;
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       return base;
     }
 
@@ -166,15 +170,12 @@ describe("LiquidDOTVault", () => {
   describe("claimWithdrawal", () => {
     async function queuedFixture() {
       const base = await loadFixture(deployTestFixture);
-      const { vault, dot, alice, mockStaking } = base;
+      const { vault, alice } = base;
 
       // Deposit
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       // Queue withdrawal
       await vault.connect(alice).queueWithdrawal(FIVE_HUNDRED_DOT);
-
-      // Fund vault with DOT so it can pay out (simulate withdrawUnbonded)
-      await dot.mint(await vault.getAddress(), FIVE_HUNDRED_DOT);
 
       return { ...base, requestId: 0n };
     }
@@ -190,15 +191,18 @@ describe("LiquidDOTVault", () => {
     });
 
     it("transfers DOT to receiver after unbonding", async () => {
-      const { vault, dot, alice, mockStaking, requestId } = await queuedFixture();
+      const { vault, alice, mockStaking, requestId } = await queuedFixture();
       const UNBONDING_ERAS = await vault.UNBONDING_ERAS();
       await mockStaking.advanceEra(UNBONDING_ERAS);
 
-      const balanceBefore = await dot.balanceOf(await alice.getAddress());
-      await vault.connect(alice).claimWithdrawal(requestId);
-      const balanceAfter = await dot.balanceOf(await alice.getAddress());
+      const aliceAddress = await alice.getAddress();
+      const balanceBefore = await ethers.provider.getBalance(aliceAddress);
+      const tx = await vault.connect(alice).claimWithdrawal(requestId);
+      const receipt = await tx.wait();
+      const gasCost = (receipt?.gasUsed ?? 0n) * (receipt?.gasPrice ?? 0n);
+      const balanceAfter = await ethers.provider.getBalance(aliceAddress);
 
-      expect(balanceAfter - balanceBefore).to.equal(FIVE_HUNDRED_DOT);
+      expect(balanceAfter + gasCost - balanceBefore).to.equal(FIVE_HUNDRED_DOT);
     });
 
     it("emits WithdrawalClaimed event", async () => {
@@ -246,7 +250,7 @@ describe("LiquidDOTVault", () => {
     async function depositedFixture() {
       const base = await loadFixture(deployTestFixture);
       const { vault, alice, mockStaking } = base;
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
       return base;
     }
 
@@ -305,10 +309,87 @@ describe("LiquidDOTVault", () => {
   });
 
   // -------------------------------------------------------------------------
+  describe("native vault mode", () => {
+    it("tracks direct native transfers as pending rewards", async () => {
+      const { vault, alice } = await loadFixture(deployNativeVaultModeFixture);
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
+
+      await alice.sendTransaction({
+        to: await vault.getAddress(),
+        value: HUNDRED_DOT,
+      });
+
+      expect(await vault.pendingRewards()).to.equal(HUNDRED_DOT);
+    });
+
+    it("syncs native surplus into managed assets when compounded", async () => {
+      const { vault, alice, keeper } = await loadFixture(deployNativeVaultModeFixture);
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
+
+      const rateBefore = await vault.exchangeRate();
+      await alice.sendTransaction({
+        to: await vault.getAddress(),
+        value: HUNDRED_DOT,
+      });
+
+      await expect(vault.connect(keeper).compoundRewards())
+        .to.emit(vault, "RewardsCompounded")
+        .withArgs(HUNDRED_DOT, (rate: bigint) => rate > rateBefore);
+
+      expect(await vault.totalDOTManaged()).to.equal(THOUSAND_DOT + HUNDRED_DOT);
+      expect(await vault.exchangeRate()).to.be.gt(rateBefore);
+      expect(await vault.pendingRewards()).to.equal(0n);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe("operator-assisted staking mode", () => {
+    it("sweeps idle PAS to the configured operator", async () => {
+      const { vault, alice, deployer } = await loadFixture(deployNativeVaultModeFixture);
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
+
+      const deployerAddress = await deployer.getAddress();
+      const balanceBefore = await ethers.provider.getBalance(deployerAddress);
+      const tx = await vault.sweepToOperator(FIVE_HUNDRED_DOT);
+      const receipt = await tx.wait();
+      const gasCost = (receipt?.gasUsed ?? 0n) * (receipt?.gasPrice ?? 0n);
+      const balanceAfter = await ethers.provider.getBalance(deployerAddress);
+
+      expect(await vault.operatorManagedAssets()).to.equal(FIVE_HUNDRED_DOT);
+      expect(balanceAfter + gasCost - balanceBefore).to.equal(FIVE_HUNDRED_DOT);
+    });
+
+    it("reports external rewards into exchange-rate accounting", async () => {
+      const { vault, alice } = await loadFixture(deployNativeVaultModeFixture);
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
+
+      const rateBefore = await vault.exchangeRate();
+      await vault.reportExternalRewards({ value: HUNDRED_DOT });
+
+      expect(await vault.totalDOTManaged()).to.equal(THOUSAND_DOT + HUNDRED_DOT);
+      expect(await vault.exchangeRate()).to.be.gt(rateBefore);
+    });
+
+    it("requires operator funding before claims in operator-assisted mode", async () => {
+      const { vault, alice } = await loadFixture(deployNativeVaultModeFixture);
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
+      await vault.sweepToOperator(FIVE_HUNDRED_DOT);
+
+      await vault.connect(alice).queueWithdrawal(FIVE_HUNDRED_DOT);
+      await expect(vault.connect(alice).claimWithdrawal(0n)).to.be.revertedWith(
+        "LiquidDOTVault: withdrawal not funded"
+      );
+
+      await vault.fundWithdrawal(0n, { value: FIVE_HUNDRED_DOT });
+      await expect(vault.connect(alice).claimWithdrawal(0n)).not.to.be.reverted;
+    });
+  });
+
+  // -------------------------------------------------------------------------
   describe("exchangeRate", () => {
     it("remains 1e18 with no rewards (initial proportional rate)", async () => {
       const { vault, alice } = await loadFixture(deployTestFixture);
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
 
       // Rate should be stable: 1000e10 DOT / (1000e18 stDOT) = 1e-8 DOT per stDOT-wei
       // As a ratio: totalDOT * 1e18 / supply
@@ -318,7 +399,7 @@ describe("LiquidDOTVault", () => {
 
     it("increases proportionally after compounding", async () => {
       const { vault, alice, mockStaking, keeper } = await loadFixture(deployTestFixture);
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
 
       const rateBefore = await vault.exchangeRate();
 
@@ -333,14 +414,14 @@ describe("LiquidDOTVault", () => {
       const { vault, alice, bob, mockStaking, keeper } = await loadFixture(deployTestFixture);
 
       // Alice deposits first
-      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress());
+      await vault.connect(alice).deposit(THOUSAND_DOT, await alice.getAddress(), { value: THOUSAND_DOT });
 
       // Compound rewards
       await mockStaking.addMockRewards(await vault.getAddress(), HUNDRED_DOT);
       await vault.connect(keeper).compoundRewards();
 
       // Bob deposits same amount — should get fewer shares
-      await vault.connect(bob).deposit(THOUSAND_DOT, await bob.getAddress());
+      await vault.connect(bob).deposit(THOUSAND_DOT, await bob.getAddress(), { value: THOUSAND_DOT });
 
       const aliceShares = await vault.balanceOf(await alice.getAddress());
       const bobShares = await vault.balanceOf(await bob.getAddress());
